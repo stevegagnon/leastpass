@@ -1,0 +1,195 @@
+<!doctype html>
+
+<html lang="en">
+
+<head>
+  <meta charset="utf-8">
+  <title>leastpass</title>
+  <link rel="manifest" href="manifest.json">
+  <style>
+
+  </style>
+</head>
+
+<body>
+  <img src="icon-512.png">
+
+  <label>
+    site
+    <input id="site">
+  </label>
+
+  <label>
+    login
+    <input id="login">
+  </label>
+  <label>
+    master password
+    <input id="master-password" type="password">
+  </label>
+
+  <button id="generate">Generate</button>
+
+  <label>
+    site password
+    <input id="site-password" readonly>
+  </label>
+
+
+  <label>
+    alphabit
+    <input id="alphabit" value="abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789">
+  </label>
+
+  <label>
+    required one of
+    <input id="required-characters">
+  </label>
+
+  <select id="length">
+    <option value="10">10 characters</option>
+    <option value="20" selected>20 characters</option>
+    <option value="30">30 characters</option>
+    <option value="50">50 characters</option>
+    <option value="100">100 characters</option>
+  </select>
+
+
+  <label>
+    site url
+    <input id="site-url" readonly>
+  </label>
+
+
+  <script>
+    function generate_iv() {
+      return crypto.getRandomValues(new Uint8Array(12));
+    }
+
+    async function generate_digest(master_password, site, login, version) {
+      const enc = new TextEncoder('utf-8');
+      encoded_fields = enc.encode([master_password, site, login, version].join(':'));
+      const d1 = await crypto.subtle.digest('SHA-512', encoded_fields);
+      const d2 = await crypto.subtle.digest('SHA-512', d1);
+      return [d1, d2];
+    }
+
+    async function get_key(key_data, iv) {
+      const bytes = key_data.slice(0, 16);
+      console.log(bytes);
+      return window.crypto.subtle.importKey(
+        "raw",
+        bytes,
+        "AES-GCM",
+        true,
+        ["encrypt", "decrypt"]
+      );
+    }
+
+    function encode_site_url(fields) {
+      const url = new URL(location.href);
+      url.hash = `#${btoa(JSON.stringify(fields))}`;
+      return url.href;
+    }
+
+    function decode_site_url() {
+      const url = new URL(location.href);
+      const s = url.hash.substr(1);
+      return s.length > 0 ? JSON.parse(atob(s)) : {};
+    }
+
+
+    function generate_password(digest, alphabit) {
+      const dv = new DataView(digest);
+      const out = [];
+      const bits = Math.ceil(Math.log2(alphabit.length));
+      const mask = (0x1 << bits) - 1;
+      for (let i = 0; i < dv.byteLength - 3; i += 4) {
+        const d = dv.getUint32(i);
+        for (let j = 0; j < (32 - bits); j += bits) {
+          const ch = (d >> j) & mask;
+          if (ch < alphabit.length) {
+            out.push(alphabit[ch]);
+          }
+        }
+      }
+      return out.join('');
+    }
+
+    (() => {
+      const [
+        generate_el,
+        site_el,
+        login_el,
+        master_password_el,
+        site_password_el,
+        length_el,
+        alphabit_el,
+        required_characters_el,
+        site_url_el
+      ] = [
+        'generate',
+        'site',
+        'login',
+        'master-password',
+        'site-password',
+        'length',
+        'alphabit',
+        'required-characters',
+        'site-url'
+      ].map(id => document.getElementById(id));
+
+      let fields = decode_site_url();
+      site_el.value = fields.site;
+      login_el.value = fields.login;
+      alphabit_el.value = fields.alphabit;
+      required_characters_el.value = fields.required;
+      length_el.value = fields.length;
+
+      generate_el.onclick = async () => {
+        site_url_el.value = encode_site_url({
+          site: site_el.value,
+          login: login_el.value,
+          alphabit: alphabit_el.value,
+          required: required_characters_el.value,
+          length: length_el.value
+        });
+
+        let counter = 1;
+
+        while (counter < 100) {
+
+          const [digest, url_key_data] = await generate_digest(
+            master_password_el.value,
+            site_el.value,
+            login_el.value,
+            counter
+          );
+
+          const url_key = await get_key(url_key_data);
+
+          const password = generate_password(digest, alphabit_el.value).substr(0, +length_el.value);
+
+          if (required_characters_el.value !== '') {
+            const chars = new Set(password);
+
+            if (!Array.from(required_characters_el.value).some(ch => chars.has(ch))) {
+              ++counter;
+              continue;
+            }
+          }
+
+          site_password_el.value = password;
+
+          break;
+
+        }
+      };
+    })();
+
+
+    // abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789!"#$%&\'()*+,-.:;<=>?@[\]^_`{|}~'
+  </script>
+</body>
+
+</html>
