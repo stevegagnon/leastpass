@@ -7,83 +7,109 @@
   <title>leastpass</title>
   <link rel="manifest" href="manifest.json">
   <style>
+    body {
+      font-size: larger;
+    }
 
+    form {
+      padding: 2em;
+    }
+
+    input[type="text"], input[type="password"] {
+      border-radius: 1.35em;
+      border: 1px solid red;
+      padding: .7em 2ch;
+      margin: .2em 0;
+      width: 100%;
+    }
   </style>
 </head>
 
 <body>
   <img src="icon-512.png">
 
-  <label>
-    site
-    <input id="site">
-  </label>
+  <form id="fields">
+    <div>
+      <input type="text" id="site" placeholder="site">
+    </div>
 
-  <label>
-    login
-    <input id="login">
-  </label>
-  <label>
-    master password
-    <input id="master-password" type="password">
-  </label>
+    <div>
+      <input type="text" id="login" placeholder="login">
+    </div>
 
-  <button id="generate">Generate</button>
+    <div>
+      <input type="password" id="master_password" type="password" placeholder="master password">
+    </div>
 
-  <label>
-    site password
-    <input id="site-password" readonly>
-  </label>
+    <div>
+      <input type="text" id="site_password" readonly placeholder="site password">
+    </div>
 
+    <div>
+      <input type="text" id="alphabit" placeholder="alphabit">
+    </div>
 
-  <label>
-    alphabit
-    <input id="alphabit" value="abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789">
-  </label>
+    <div>
+      <input type="text" id="required_characters" placeholder="required one of">
+    </div>
 
-  <label>
-    required one of
-    <input id="required-characters">
-  </label>
+    <div>
+      <select id="length">
+        <option value="10">10 characters</option>
+        <option value="20" selected>20 characters</option>
+        <option value="30">30 characters</option>
+        <option value="50">50 characters</option>
+        <option value="100">100 characters</option>
+      </select>
+    </div>
 
-  <select id="length">
-    <option value="10">10 characters</option>
-    <option value="20" selected>20 characters</option>
-    <option value="30">30 characters</option>
-    <option value="50">50 characters</option>
-    <option value="100">100 characters</option>
-  </select>
-
-
-  <label>
-    site url
-    <input id="site-url" readonly>
-  </label>
-
+    <button id="generate">Generate</button>
+  </form>
 
   <script>
-    function generate_iv() {
-      return crypto.getRandomValues(new Uint8Array(12));
-    }
-
-    async function generate_digest(master_password, site, login, version) {
+    async function generate_password({
+      master_password,
+      site,
+      login,
+      alphabit,
+      required,
+      length
+    }) {
       const enc = new TextEncoder('utf-8');
-      encoded_fields = enc.encode([master_password, site, login, version].join(':'));
-      const d1 = await crypto.subtle.digest('SHA-512', encoded_fields);
-      const d2 = await crypto.subtle.digest('SHA-512', d1);
-      return [d1, d2];
-    }
 
-    async function get_key(key_data, iv) {
-      const bytes = key_data.slice(0, 16);
-      console.log(bytes);
-      return window.crypto.subtle.importKey(
-        "raw",
-        bytes,
-        "AES-GCM",
-        true,
-        ["encrypt", "decrypt"]
-      );
+      for (let counter = 0; counter < 100; ++counter) {
+        const encoded_fields = enc.encode([master_password, site, login, counter].join(':'));
+        const digest = await crypto.subtle.digest('SHA-512', encoded_fields);
+        const dv = new DataView(digest);
+        const bits = Math.ceil(Math.log2(alphabit.length));
+        const mask = (0x1 << bits) - 1;
+        let password = '';
+        let has_required = required.size === 0;
+
+        attempt:
+        for (let i = 0; i < dv.byteLength - 3; i += 4) {
+          const d = dv.getUint32(i);
+          for (let j = 0; j < (32 - bits); j += bits) {
+            const offset = (d >> j) & mask;
+            if (offset < alphabit.length) {
+              const ch = alphabit[offset];
+              password += ch;
+              if (!has_required) {
+                has_required = required.has(ch);
+              }
+              if (password.length >= length) {
+                if (has_required) {
+                  return password;
+                } else {
+                  break attempt;
+                }
+              }
+            }
+          }
+        }
+      }
+
+      throw 'could not generate password';
     }
 
     function encode_site_url(fields) {
@@ -98,97 +124,49 @@
       return s.length > 0 ? JSON.parse(atob(s)) : {};
     }
 
+    const generate_el = document.getElementById('generate'),
+      site_el = document.getElementById('site'),
+      login_el = document.getElementById('login'),
+      master_password_el = document.getElementById('master_password'),
+      site_password_el = document.getElementById('site_password'),
+      length_el = document.getElementById('length'),
+      alphabit_el = document.getElementById('alphabit'),
+      required_characters_el = document.getElementById('required_characters'),
+      fields_el = document.getElementById('fields');
 
-    function generate_password(digest, alphabit) {
-      const dv = new DataView(digest);
-      const out = [];
-      const bits = Math.ceil(Math.log2(alphabit.length));
-      const mask = (0x1 << bits) - 1;
-      for (let i = 0; i < dv.byteLength - 3; i += 4) {
-        const d = dv.getUint32(i);
-        for (let j = 0; j < (32 - bits); j += bits) {
-          const ch = (d >> j) & mask;
-          if (ch < alphabit.length) {
-            out.push(alphabit[ch]);
-          }
-        }
-      }
-      return out.join('');
-    }
+    const fields = decode_site_url();
 
-    (() => {
-      const [
-        generate_el,
-        site_el,
-        login_el,
-        master_password_el,
-        site_password_el,
-        length_el,
-        alphabit_el,
-        required_characters_el,
-        site_url_el
-      ] = [
-        'generate',
-        'site',
-        'login',
-        'master-password',
-        'site-password',
-        'length',
-        'alphabit',
-        'required-characters',
-        'site-url'
-      ].map(id => document.getElementById(id));
+    site_el.value = fields.site || '';
+    login_el.value = fields.login || '';
+    alphabit_el.value = fields.alphabit || 'abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789';
+    required_characters_el.value = fields.required || '';
+    length_el.value = fields.length || 20;
 
-      let fields = decode_site_url();
-      site_el.value = fields.site;
-      login_el.value = fields.login;
-      alphabit_el.value = fields.alphabit;
-      required_characters_el.value = fields.required;
-      length_el.value = fields.length;
-
-      generate_el.onclick = async () => {
-        site_url_el.value = encode_site_url({
+    fields_el.onchange = e => {
+      if ([site_el, login_el, alphabit_el, alphabit_el, required_characters_el, length_el].indexOf(e.target) >= 0)
+        location.href = encode_site_url({
           site: site_el.value,
           login: login_el.value,
           alphabit: alphabit_el.value,
           required: required_characters_el.value,
           length: length_el.value
         });
+    };
 
-        let counter = 1;
-
-        while (counter < 100) {
-
-          const [digest, url_key_data] = await generate_digest(
-            master_password_el.value,
-            site_el.value,
-            login_el.value,
-            counter
-          );
-
-          const url_key = await get_key(url_key_data);
-
-          const password = generate_password(digest, alphabit_el.value).substr(0, +length_el.value);
-
-          if (required_characters_el.value !== '') {
-            const chars = new Set(password);
-
-            if (!Array.from(required_characters_el.value).some(ch => chars.has(ch))) {
-              ++counter;
-              continue;
-            }
-          }
-
-          site_password_el.value = password;
-
-          break;
-
-        }
-      };
-    })();
-
-
-    // abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789!"#$%&\'()*+,-.:;<=>?@[\]^_`{|}~'
+    fields_el.onsubmit = async () => {
+      try {
+        site_password_el.value = await generate_password({
+          master_password: master_password_el.value,
+          site: site_el.value,
+          login: login_el.value,
+          alphabit: alphabit_el.value,
+          required: new Set(required_characters_el.value),
+          length: length_el.value
+        });
+      } catch (e) {
+        console.log(e);
+      }
+    };
   </script>
 </body>
 
