@@ -8,62 +8,55 @@
   <link rel="manifest" href="manifest.json">
   <style>
     body {
-      font-size: larger;
+      background: #282828;
+      margin: 1em;
     }
 
-    form {
-      padding: 2em;
-    }
-
-    input[type="text"], input[type="password"] {
-      border-radius: 1.35em;
-      border: 1px solid red;
-      padding: .7em 2ch;
-      margin: .2em 0;
+    input,
+    select {
+      font-family: sans-serif;
+      font-size: x-large;
+      border: none;
+      padding: .2em;
+      background: none;
+      color: #ffb000;
       width: 100%;
+      text-overflow: ellipsis;
+    }
+
+    input:focus, select:focus {
+      background: whitesmoke;
+      color: #282828;
+    }
+
+    button {
+      margin: 1em 0;
+      font-family: sans-serif;
+      font-size: x-large;
+      background: #ffb000;
+      padding: .4em;
+      box-shadow: 5px 10px;
+      border: none;
+      cursor: pointer;
     }
   </style>
 </head>
 
 <body>
-  <img src="icon-512.png">
-
   <form id="fields">
-    <div>
-      <input type="text" id="site" placeholder="site">
-    </div>
-
-    <div>
-      <input type="text" id="login" placeholder="login">
-    </div>
-
-    <div>
-      <input type="password" id="master_password" type="password" placeholder="master password">
-    </div>
-
-    <div>
-      <input type="text" id="site_password" readonly placeholder="site password">
-    </div>
-
-    <div>
-      <input type="text" id="alphabit" placeholder="alphabit">
-    </div>
-
-    <div>
-      <input type="text" id="required_characters" placeholder="required one of">
-    </div>
-
-    <div>
-      <select id="length">
-        <option value="10">10 characters</option>
-        <option value="20" selected>20 characters</option>
-        <option value="30">30 characters</option>
-        <option value="50">50 characters</option>
-        <option value="100">100 characters</option>
-      </select>
-    </div>
-
-    <button id="generate">Generate</button>
+    <input type="text" id="site" placeholder="site">
+    <input type="text" id="login" placeholder="login">
+    <input type="password" id="master_password" type="password" placeholder="master password">
+    <input type="text" id="alphabit" placeholder="alphabit">
+    <input type="text" id="required_characters" placeholder="required one of">
+    <select id="length">
+      <option value="10">10 characters</option>
+      <option value="20" selected>20 characters</option>
+      <option value="30">30 characters</option>
+      <option value="50">50 characters</option>
+      <option value="100">100 characters</option>
+    </select>
+    <button>Copy password to clipboard</button>
   </form>
 
   <script>
@@ -124,11 +117,9 @@
       return s.length > 0 ? JSON.parse(atob(s)) : {};
     }
 
-    const generate_el = document.getElementById('generate'),
-      site_el = document.getElementById('site'),
+    const site_el = document.getElementById('site'),
       login_el = document.getElementById('login'),
       master_password_el = document.getElementById('master_password'),
-      site_password_el = document.getElementById('site_password'),
       length_el = document.getElementById('length'),
       alphabit_el = document.getElementById('alphabit'),
       required_characters_el = document.getElementById('required_characters'),
@@ -153,16 +144,18 @@
         });
     };
 
-    fields_el.onsubmit = async () => {
+    fields_el.onsubmit = async function () {
       try {
-        site_password_el.value = await generate_password({
-          master_password: master_password_el.value,
-          site: site_el.value,
-          login: login_el.value,
-          alphabit: alphabit_el.value,
-          required: new Set(required_characters_el.value),
-          length: length_el.value
-        });
+        navigator.clipboard.writeText(
+          await generate_password({
+            master_password: master_password_el.value,
+            site: site_el.value,
+            login: login_el.value,
+            alphabit: alphabit_el.value,
+            required: new Set(required_characters_el.value),
+            length: length_el.value
+          })
+        );
       } catch (e) {
         console.log(e);
       }
