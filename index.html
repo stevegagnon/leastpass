@@ -8,31 +8,11 @@
   <title>leastpass</title>
   <link rel="manifest" href="manifest.json">
   <style>
-    body {
-      margin: 20px;
-    }
-
-    input,
-    select {
-      font-size: x-large;
-      border: none;
-      padding: 10px;
-      width: 100%;
-      text-overflow: ellipsis;
-      background: none;
-    }
-
-    button {
-      font-size: x-large;
-      margin: 10px 0;
-      width: 100%;
-      background: #ffb000;
-      padding: 10px;
-    }
-
-    #add_to_home {
-      display: none;
-    }
+    body {  margin: 10px; }
+    form * { font-size: x-large; width: 100%; }
+    form * + * { margin-top: 10px; }
+    input, select {  border: none; text-overflow: ellipsis; }
+    button { padding: 10px; }
   </style>
 </head>
 
@@ -61,21 +41,10 @@
       <option value="8">8th password</option>
     </select>
     <button id="generate_button">Copy password to clipboard</button>
-    <button id="add_to_home">Add to home screen</button>
   </form>
 
   <script>
     const default_alphabit = 'abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789';
-
-    window.addEventListener('beforeinstallprompt', e => {
-      e.preventDefault();
-      const add_to_home_el = document.getElementById('add_to_home');
-      add_to_home_el.style.display = 'block';
-      add_to_home_el.addEventListener('click', () => {
-        add_to_home_el.style.display = 'none';
-        e.prompt();
-      });
-    });
 
     if ('serviceWorker' in navigator) {
       window.addEventListener('load', async () => {
