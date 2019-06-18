@@ -4,40 +4,34 @@
 
 <head>
   <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>leastpass</title>
   <link rel="manifest" href="manifest.json">
   <style>
     body {
-      background: #282828;
-      margin: 1em;
+      margin: 20px;
     }
 
     input,
     select {
-      font-family: sans-serif;
       font-size: x-large;
       border: none;
-      padding: .2em;
-      background: none;
-      color: #ffb000;
+      padding: 10px;
       width: 100%;
       text-overflow: ellipsis;
-    }
-
-    input:focus, select:focus {
-      background: whitesmoke;
-      color: #282828;
+      background: none;
     }
 
     button {
-      margin: 1em 0;
-      font-family: sans-serif;
       font-size: x-large;
+      margin: 10px 0;
+      width: 100%;
       background: #ffb000;
-      padding: .4em;
-      box-shadow: 5px 10px;
-      border: none;
-      cursor: pointer;
+      padding: 10px;
+    }
+
+    #add_to_home {
+      display: none;
     }
   </style>
 </head>
@@ -56,24 +50,64 @@
       <option value="50">50 characters</option>
       <option value="100">100 characters</option>
     </select>
-    <button>Copy password to clipboard</button>
+    <select id="version">
+      <option value="1" selected>1st password</option>
+      <option value="2">2nd password</option>
+      <option value="3">3rd password</option>
+      <option value="4">4th password</option>
+      <option value="5">5th password</option>
+      <option value="6">6th password</option>
+      <option value="7">7th password</option>
+      <option value="8">8th password</option>
+    </select>
+    <button id="generate_button">Copy password to clipboard</button>
+    <button id="add_to_home">Add to home screen</button>
   </form>
 
   <script>
+    const default_alphabit = 'abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789';
+
+    window.addEventListener('beforeinstallprompt', e => {
+      e.preventDefault();
+      const add_to_home_el = document.getElementById('add_to_home');
+      add_to_home_el.style.display = 'block';
+      add_to_home_el.addEventListener('click', () => {
+        add_to_home_el.style.display = 'none';
+        e.prompt();
+      });
+    });
+
+    if ('serviceWorker' in navigator) {
+      window.addEventListener('load', async () => {
+        const registration = await navigator.serviceWorker.register('service_worker.js');
+      });
+    }
+
     async function generate_password({
       master_password,
       site,
       login,
       alphabit,
       required,
-      length
+      length,
+      version
     }) {
       const enc = new TextEncoder('utf-8');
-
       for (let counter = 0; counter < 100; ++counter) {
-        const encoded_fields = enc.encode([master_password, site, login, counter].join(':'));
-        const digest = await crypto.subtle.digest('SHA-512', encoded_fields);
-        const dv = new DataView(digest);
+        const encoded_fields = enc.encode([master_password, site, login, version, counter].join(':'));
+        const salt = new Uint32Array([0x4c4cc505, 0x851e7c8a, 0x99c49016, 0xd2245750, 0x3c9d3d64, 0x13705020, 0xb20600f8, 0xd134d789]);
+        const key = await crypto.subtle.importKey('raw', encoded_fields, 'PBKDF2', false, ['deriveKey', 'deriveBits']);
+        const derive_bits = await crypto.subtle.deriveBits(
+          {
+            name: 'PBKDF2',
+            hash: 'SHA-512',
+            salt,
+            iterations: 200000
+          },
+          key,
+          512
+        );
+        const dv = new DataView(derive_bits);
         const bits = Math.ceil(Math.log2(alphabit.length));
         const mask = (0x1 << bits) - 1;
         let password = '';
@@ -123,39 +157,52 @@
       length_el = document.getElementById('length'),
       alphabit_el = document.getElementById('alphabit'),
       required_characters_el = document.getElementById('required_characters'),
-      fields_el = document.getElementById('fields');
+      fields_el = document.getElementById('fields'),
+      generate_button_el = document.getElementById('generate_button'),
+      version_el = document.getElementById('version');
 
-    const fields = decode_site_url();
+    const url_values = decode_site_url();
 
-    site_el.value = fields.site || '';
-    login_el.value = fields.login || '';
-    alphabit_el.value = fields.alphabit || 'abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789';
-    required_characters_el.value = fields.required || '';
-    length_el.value = fields.length || 20;
+    const fields = [
+      ['s', site_el, ''],
+      ['l', login_el, ''],
+      ['r', required_characters_el, ''],
+      ['ln', length_el, '20'],
+      ['a', alphabit_el, default_alphabit],
+      ['v', version_el, '1'],
+    ];
+
+    for (const [key, el, default_value] of fields) {
+      el.value = url_values[key] || default_value;
+    }
 
     fields_el.onchange = e => {
-      if ([site_el, login_el, alphabit_el, alphabit_el, required_characters_el, length_el].indexOf(e.target) >= 0)
-        location.href = encode_site_url({
-          site: site_el.value,
-          login: login_el.value,
-          alphabit: alphabit_el.value,
-          required: required_characters_el.value,
-          length: length_el.value
-        });
+      if ([site_el, login_el, alphabit_el, alphabit_el, required_characters_el, length_el, version_el].indexOf(e.target) >= 0)
+        location.href = encode_site_url(
+          fields.reduce((a, [key, el, default_value]) => {
+            if (el.value !== default_value) {
+              a[key] = el.value;
+            }
+            return a;
+          }, {})
+        );
     };
 
     fields_el.onsubmit = async function () {
       try {
-        navigator.clipboard.writeText(
-          await generate_password({
-            master_password: master_password_el.value,
-            site: site_el.value,
-            login: login_el.value,
-            alphabit: alphabit_el.value,
-            required: new Set(required_characters_el.value),
-            length: length_el.value
-          })
-        );
+        const button_content = generate_button_el.innerHTML;
+        generate_button_el.innerText = 'Generating...';
+        const password = await generate_password({
+          master_password: master_password_el.value,
+          site: site_el.value,
+          login: login_el.value,
+          alphabit: alphabit_el.value,
+          required: new Set(required_characters_el.value),
+          length: length_el.value,
+          version: version_el.value
+        });
+        navigator.clipboard.writeText(password);
+        generate_button_el.innerHTML = button_content;
       } catch (e) {
         console.log(e);
       }

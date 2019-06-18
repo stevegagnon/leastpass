@@ -1,7 +1,7 @@
 {
   "name": "leastpass",
   "short_name": "leastpass",
-  "start_url": ".",
+  "start_url": "index.html",
   "display": "standalone",
   "background_color": "#fff",
   "description": "Stateless password generator.",
